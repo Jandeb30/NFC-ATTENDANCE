@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Classroom Attendance</title>
+<style>
+:root{--bg:#f0f2f5;--card:#fff;--text:#333;--border:#ddd;--primary:#0066cc;--success:#28a745;--danger:#dc3545;}
+body{background:var(--bg);color:var(--text);font-family:sans-serif;margin:0;padding:1rem;}
+.container{max-width:900px;margin:auto;}
+.tabs{display:flex;gap:0.5rem;margin-bottom:1rem;border-bottom:2px solid var(--border);padding-bottom:0.5rem;}
+.tab-btn{background:var(--card);border:1px solid var(--border);padding:0.5rem 1rem;border-radius:4px;cursor:pointer;font-weight:600;}
+.tab-btn.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+.tab-content{display:none;}.tab-content.active{display:block;}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin-bottom:1.5rem;}
+.stat-card{background:var(--card);padding:1rem;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.05);border-left:4px solid var(--primary);}
+.stat-card.success{border-left-color:var(--success);}.stat-card.danger{border-left-color:var(--danger);}
+.stat-label{font-size:.75rem;color:#666;text-transform:uppercase;font-weight:600;}
+.stat-val{font-size:1.4rem;font-weight:bold;margin-top:.2rem;}
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:999;opacity:0;pointer-events:none;transition:opacity 0.2s ease;}
+.modal-overlay.active{opacity:1;pointer-events:auto;}
+.modal-card{background:#fff;border-radius:14px;padding:2rem;width:90%;max-width:420px;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,0.2);transform:scale(0.9);transition:transform 0.2s ease;}
+.modal-overlay.active .modal-card{transform:scale(1);}
+.avatar{width:110px;height:110px;border-radius:50%;border:4px solid var(--primary);object-fit:cover;margin:0 auto 1rem;background:#eee;display:flex;align-items:center;justify-content:center;font-size:3rem;}
+.client-name{font-size:1.6rem;font-weight:bold;margin:0;color:#222;}.client-snum{font-size:1rem;color:#666;margin:0.3rem 0 1.2rem;}
+.prompt-badge{display:inline-block;background:#ffc107;color:#000;padding:0.6rem 1.2rem;border-radius:50px;font-weight:bold;font-size:1rem;}
+.prompt-badge.granted{background:var(--success);color:#fff;}.prompt-badge.denied{background:var(--danger);color:#fff;}
+.panel{background:var(--card);border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.05);padding:1.25rem;margin-bottom:1.5rem;}
+.panel h2{font-size:1.1rem;margin-top:0;color:#444;border-bottom:1px solid var(--border);padding-bottom:.5rem;}
+.form-group{margin-bottom:1rem;}.form-group label{display:block;font-size:.85rem;font-weight:600;margin-bottom:.3rem;}
+input{width:100%;box-sizing:border-box;border:1px solid var(--border);padding:.6rem;border-radius:4px;font-size:.9rem;}
+button.action-btn{background:var(--primary);color:#fff;border:none;padding:.75rem 1.5rem;border-radius:4px;cursor:pointer;font-weight:bold;font-size:1rem;width:100%;}
+table{width:100%;border-collapse:collapse;margin-top:.5rem;}th,td{text-align:left;padding:.75rem;border-bottom:1px solid var(--border);font-size:.9rem;}
+th{background:#f8f9fa;color:#495057;font-weight:600;}.status-granted{color:var(--success);font-weight:bold;}.status-denied{color:var(--danger);font-weight:bold;}
+.empty-row{text-align:center;color:#888;padding:2rem;}
+.reg-stepper{display:flex;justify-content:space-between;margin-bottom:1rem;font-size:0.85rem;font-weight:600;color:#888;}
+.reg-stepper span.active-step{color:var(--primary);}
+.progress-bar{height:6px;background:#e9ecef;border-radius:3px;margin-bottom:1rem;overflow:hidden;}
+.progress-fill{height:100%;width:0%;background:var(--primary);transition:width 0.3s ease;}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="tabs">
+<button class="tab-btn active" onclick="switchTab('dashboard')">Live Attendance</button>
+<button class="tab-btn" onclick="switchTab('registration')">ID Registration</button>
+</div>
+
+<div id="dashboard" class="tab-content active">
+<div class="stats">
+<div class="stat-card"><div class="stat-label">Total Scans</div><div class="stat-val" id="statTotal">0</div></div>
+<div class="stat-card success"><div class="stat-label">Granted</div><div class="stat-val" id="statSuccess">0</div></div>
+<div class="stat-card danger"><div class="stat-label">Denied</div><div class="stat-val" id="statFail">0</div></div>
+</div>
+<div class="panel">
+<h2>Recent Attendance Logs</h2>
+<table>
+<thead><tr><th>Time</th><th>Student Name</th><th>Student Number</th><th>Status</th></tr></thead>
+<tbody id="logTableBody"><tr><td colspan="4" class="empty-row">No attendance records yet. Waiting for NFC scan...</td></tr></tbody>
+</table>
+</div>
+</div>
+
+<div id="registration" class="tab-content">
+<div class="panel">
+<h2>Register New Student</h2>
+<div class="reg-stepper">
+<span id="step1Lbl" class="active-step">1. Fill Details</span>
+<span id="step2Lbl">2. Tap RFID Card</span>
+<span id="step3Lbl">3. Scan Fingerprint</span>
+</div>
+<div class="progress-bar"><div id="regProgressFill" class="progress-fill" style="width: 33%;"></div></div>
+<div class="form-group"><label>AS608 Fingerprint Slot ID (1 to 127):</label><input type="number" id="regId" placeholder="e.g. 1" min="1" max="127"></div>
+<div class="form-group"><label>Student Full Name:</label><input type="text" id="regName" placeholder="e.g. John Doe"></div>
+<div class="form-group"><label>Student Number:</label><input type="text" id="regSNum" placeholder="e.g. 2026-00012"></div>
+<div class="form-group"><label>Photo URL (Optional):</label><input type="text" id="regPhoto" placeholder="https://example.com/photo.jpg"></div>
+<button id="regSubmitBtn" class="action-btn" onclick="startRegistration()">Start Registration Process</button>
+<div id="regStatusBox" style="margin-top:1rem;font-weight:bold;text-align:center;color:#0066cc;min-height:1.5rem;">Ready to register.</div>
+</div>
+</div>
+</div>
+
+<div id="scanModal" class="modal-overlay">
+<div class="modal-card">
+<div id="clientAvatarContainer">
+<img id="clientPhoto" class="avatar" src="" onerror="this.style.display='none';document.getElementById('clientFallback').style.display='flex';" style="display:none;">
+<div id="clientFallback" class="avatar" style="margin:0 auto 1rem;">&#x1F393;</div>
+</div>
+<h2 id="clientName" class="client-name">Student Name</h2>
+<div id="clientSNum" class="client-snum">Student Number</div>
+<div id="clientPrompt" class="prompt-badge">Scan Fingerprint for 2FA</div>
+</div>
+</div>
+
+<script>
+const ESP_IP = "http://192.168.4.1";
+
+function switchTab(tabId){
+var t=document.querySelectorAll('.tab-content');
+for(var i=0;i<t.length;i++){t[i].classList.remove('active');}
+var b=document.querySelectorAll('.tab-btn');
+for(var i=0;i<b.length;i++){b[i].classList.remove('active');}
+document.getElementById(tabId).classList.add('active');
+event.currentTarget.classList.add('active');
+}
+
+function startRegistration(){
+var id=document.getElementById('regId').value;
+var name=document.getElementById('regName').value;
+var snum=document.getElementById('regSNum').value;
+var photo=document.getElementById('regPhoto').value;
+if(!id||!name||!snum){alert('Please fill in Slot ID, Name, and Student Number.');return;}
+document.getElementById('regSubmitBtn').disabled=true;
+fetch(ESP_IP + '/register?id='+id+'&name='+encodeURIComponent(name)+'&snum='+encodeURIComponent(snum)+'&photo='+encodeURIComponent(photo)).then(function(res){});
+}
+
+var lastLogId=-1;
+var wasActiveModal=false;
+
+function poll(){
+fetch(ESP_IP + '/status').then(function(res){return res.json();}).then(function(data){
+document.getElementById('statTotal').textContent=data.stats.total;
+document.getElementById('statSuccess').textContent=data.stats.success;
+document.getElementById('statFail').textContent=data.stats.fail;
+document.getElementById('regStatusBox').textContent=data.regStatus;
+
+var rState=data.regStepState;
+var fFill=document.getElementById('regProgressFill');
+var s1=document.getElementById('step1Lbl');
+var s2=document.getElementById('step2Lbl');
+var s3=document.getElementById('step3Lbl');
+var subBtn=document.getElementById('regSubmitBtn');
+
+if(rState==='idle'){fFill.style.width='33%';s1.className='active-step';s2.className='';s3.className='';subBtn.disabled=false;}
+else if(rState==='waiting_card'){fFill.style.width='66%';s1.className='';s2.className='active-step';s3.className='';subBtn.disabled=true;}
+else if(rState.indexOf('waiting_finger')!==-1||rState==='remove_finger'){fFill.style.width='90%';s1.className='';s2.className='';s3.className='active-step';subBtn.disabled=true;}
+else if(rState==='success'||rState==='error'){fFill.style.width='100%';subBtn.disabled=false;
+if(rState==='success'){document.getElementById('regId').value='';document.getElementById('regName').value='';document.getElementById('regSNum').value='';document.getElementById('regPhoto').value='';document.getElementById('regSubmitBtn').disabled=false;}
+}
+
+var client=data.client;
+var modal=document.getElementById('scanModal');
+if(client.status!=='idle'){modal.classList.add('active');wasActiveModal=true;
+document.getElementById('clientName').textContent=client.name;
+document.getElementById('clientSNum').textContent=client.studentNum;
+var p=document.getElementById('clientPhoto');
+var f=document.getElementById('clientFallback');
+if(client.photo){p.src=client.photo;p.style.display='block';f.style.display='none';}else{p.style.display='none';f.style.display='flex';}
+var b=document.getElementById('clientPrompt');
+b.textContent=client.prompt;
+b.className='prompt-badge '+(client.status==='granted'?'granted':(client.status==='denied'?'denied':''));
+}else{if(wasActiveModal){modal.classList.remove('active');wasActiveModal=false;}}
+
+if(data.logs&&data.logs.length>0){
+var tb=document.getElementById('logTableBody');
+if(lastLogId===-1){tb.innerHTML='';}
+data.logs.forEach(function(e){
+if(e.id>lastLogId){
+var tr=document.createElement('tr');
+var sc=e.status==='GRANTED'?'status-granted':'status-denied';
+tr.innerHTML='<td>'+e.ts+'</td><td><b>'+e.name+'</b></td><td>'+e.studentNum+'</td><td><span class="'+sc+'">'+e.status+'</span></td>';
+tb.insertBefore(tr,tb.firstChild);
+lastLogId=e.id;
+}
+});
+}}).catch(function(err){});
+setTimeout(poll,1000);
+}
+poll();
+</script>
+</body>
+</html>
